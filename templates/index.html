@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔐 Firmador y Verificador de PDF con GPG</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .card {
+            margin-top: 2rem;
+        }
+
+        .alert {
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+    <div class="container">
+        <div class="text-center my-4">
+            <h1>🔐 Firmador y Verificador de PDF con GPG</h1>
+            <p class="text-muted">Protege la integridad de tus documentos</p>
+            <p class="text-muted">Esta aplicación solo firma el contenido del PDF, no modifica el archivo original, no
+                restringe el cambio del nombre del archivo.</p>
+        </div>
+
+        <div class="row">
+            <!-- Firmar -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5>📝 Firmar Documento PDF</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="/sign" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="fileSign" class="form-label">Selecciona un PDF</label>
+                                <input type="file" class="form-control" id="fileSign" name="file" accept=".pdf"
+                                    required>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100">Firmar PDF</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Verificar -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5>🔍 Verificar Integridad</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="/verify" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="fileVerify" class="form-label">Sube el PDF (original o modificado)</label>
+                                <input type="file" class="form-control" id="fileVerify" name="file" accept=".pdf"
+                                    required>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">Verificar PDF</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ✅ Mensaje tras firmar -->
+        {% if signed %}
+        <div class="mt-4">
+            <div class="alert alert-success" role="alert">
+                <h4 class="alert-heading">✅ Documento firmado exitosamente</h4>
+                <p>El documento ha sido firmado digitalmente con GPG.</p>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>📄 Documento:</strong> {{ nombre_documento }}</p>
+                        <p class="mb-1"><strong>📦 Tamaño:</strong> {{ tamanio_documento }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>🕒 Fecha de firma:</strong> {{ fecha_firma }}</p>
+                        <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- ✅ / ❌ Resultado de verificación -->
+        {% if verified %}
+        <div class="mt-4">
+            {% if status == 'ok' %}
+            <div class="alert alert-success" role="alert">
+                <h4 class="alert-heading">✅ Documento auténtico</h4>
+                <p>El documento coincide con la firma original. No ha sido modificado.</p>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>📄 Documento:</strong> {{ nombre_documento }}</p>
+                        <p class="mb-1"><strong>📦 Tamaño:</strong> {{ tamanio_documento }}</p>
+                        {% if firmante %}
+                        <p class="mb-1"><strong>✍️ Firmante:</strong> {{ firmante }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>🕒 Firmado el:</strong> {{ fecha_firma }}</p>
+                        <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p>
+                    </div>
+                </div>
+            </div>
+            {% elif status == 'altered' %}
+            <div class="alert alert-danger" role="alert">
+                <h4 class="alert-heading">🚨 Documento alterado</h4>
+                <p>La firma no coincide. El contenido ha sido modificado después de la firma.</p>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>📄 Documento:</strong> {{ nombre_documento }}</p>
+                        <p class="mb-1"><strong>📦 Tamaño:</strong> {{ tamanio_documento }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>⚠️ Posible alteración después del:</strong> {{ fecha_firma }}</p>
+                        <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Mensajes flash (errores, etc.) -->
+        {% with mensajes = get_flashed_messages(with_categories=true) %}
+        {% if mensajes %}
+        <div class="mt-4">
+            {% for categoria, mensaje in mensajes %}
+            <div class="alert alert-{{ 'success' if categoria == 'success' else 'danger' if categoria == 'error' else 'warning' }} alert-dismissible fade show"
+                role="alert">
+                {{ mensaje }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <!--Boton para Limpiar mensajes -->
+        <div class="mt-4 text-center">
+            <button onclick="limpiarTodo()" class="btn btn-warning btn-lg">
+                🧹 Limpiar Todo
+            </button>
+            <p class="text-muted mt-2 small">Limpia los formularios y mensajes mostrados</p>
+        </div>
+
+        <footer class="text-center text-muted my-5">
+            <p>🔒 Firmado con GPG — Garantiza integridad y autenticidad</p>
+            <p>Creado por Jenrry Soto Dextre</p>
+            <p>Pagina Web: <a href="https://dextre.xyz" target="_blank">https://dextre.xyz</a></p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // Función para limpiar todo
+        function limpiarTodo() {
+            // Redirigir a la página principal (esto limpia los mensajes del servidor)
+            window.location.href = '/';
+        }
+    </script>
+
+    {% if trigger_download %}
+    <script>
+        // Descargar automáticamente el archivo firmado
+        window.location.href = '/download';
+    </script>
+    {% endif %}
+</body>
+
+</html>
