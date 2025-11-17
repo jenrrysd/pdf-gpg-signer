@@ -181,8 +181,15 @@ def verificar_pdf():
                         ruta_firma = candidata
                         break
             else:
-                flash('❌ Sin firma asociada.', 'error')
-                return redirect(url_for('index'))
+                os.unlink(ruta_temporal)
+                return render_template(
+                    'index.html',
+                    verified=True,
+                    status='incorrect',
+                    nombre_documento=nombre,
+                    tamanio_documento=f"{tamanio_kb:.2f} KB",
+                    hash_documento=hash_subido
+                )
 
         # ✅ Verificar (usando rutas → igual que terminal)
         with open(ruta_firma, 'rb') as sig_f:

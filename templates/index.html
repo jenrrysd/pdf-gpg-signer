@@ -105,7 +105,7 @@
                     </div>
                     <div class="col-md-6">
                         <p class="mb-1"><strong>🕒 Firmado el:</strong> {{ fecha_firma }}</p>
-                        <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p>
+                        <!-- <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p> -->
                     </div>
                 </div>
             </div>
@@ -121,7 +121,22 @@
                     </div>
                     <div class="col-md-6">
                         <p class="mb-1"><strong>⚠️ Posible alteración después del:</strong> {{ fecha_firma }}</p>
-                        <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p>
+                        <!-- <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p> -->
+                    </div>
+                </div>
+            </div>
+            {% elif status == 'incorrect' %}
+            <div class="alert alert-danger" role="alert">
+                <h4 class="alert-heading">❌ Firma INCORRECTA</h4>
+                <p>No se encontró una firma válida para este documento. El documento no está firmado o la firma no corresponde.</p>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>📄 Documento:</strong> {{ nombre_documento }}</p>
+                        <p class="mb-1"><strong>📦 Tamaño:</strong> {{ tamanio_documento }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <!-- <p class="mb-1"><strong>🔑 Hash:</strong> <code>{{ hash_documento }}</code></p> -->
                     </div>
                 </div>
             </div>
