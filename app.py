@@ -197,6 +197,41 @@ def verificar_pdf():
 
         os.unlink(ruta_temporal)
 
+        # 🛠️ Datos Verbose
+        detalles_verbose = {}
+        if request.form.get('verbose'):
+            detalles_verbose = {
+                'Fingerprint': getattr(verificacion, 'fingerprint', 'N/A'),
+                'Key ID': getattr(verificacion, 'key_id', 'N/A'),
+                'Pubkey Fingerprint': getattr(verificacion, 'pubkey_fingerprint', 'N/A'),
+                'Timestamp': getattr(verificacion, 'sig_timestamp', 'N/A'),
+                'Creation Date': datetime.datetime.fromtimestamp(int(verificacion.sig_timestamp)).strftime("%Y-%m-%d %H:%M:%S") if getattr(verificacion, 'sig_timestamp') else 'N/A',
+                'Trust Level': getattr(verificacion, 'trust_text', 'N/A'),
+                'Username': getattr(verificacion, 'username', 'N/A'),
+                'Status': getattr(verificacion, 'status', 'N/A'),
+            }
+
+            # Intentar obtener expiración de la clave si la firma no tiene
+            expire_timestamp = getattr(verificacion, 'expire_timestamp', '0')
+            key_expiration = 'Nunca'
+            
+            if str(expire_timestamp) != '0':
+                 key_expiration = datetime.datetime.fromtimestamp(float(expire_timestamp)).strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                # Buscar la clave para ver su expiración real
+                try:
+                    fp = getattr(verificacion, 'pubkey_fingerprint', None) or getattr(verificacion, 'fingerprint', None)
+                    if fp:
+                        keys = gpg.list_keys(keys=[fp])
+                        if keys:
+                            key_expires = keys[0].get('expires')
+                            if key_expires:
+                                key_expiration = datetime.datetime.fromtimestamp(float(key_expires)).strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    pass
+            
+            detalles_verbose['Key/Sig Expiration'] = key_expiration
+
         if verificacion and verificacion.valid:
             fecha = datetime.datetime.fromtimestamp(
                 int(verificacion.sig_timestamp))
@@ -209,7 +244,8 @@ def verificar_pdf():
                 tamanio_documento=f"{tamanio_kb:.2f} KB",
                 hash_documento=hash_subido,
                 firmante=verificacion.username if hasattr(
-                    verificacion, 'username') else 'GPG Key'
+                    verificacion, 'username') else 'GPG Key',
+                detalles_verbose=detalles_verbose
             )
         else:
             fecha_ref = "desconocida"
@@ -226,7 +262,8 @@ def verificar_pdf():
                 fecha_firma=fecha_ref,
                 nombre_documento=nombre,
                 tamanio_documento=f"{tamanio_kb:.2f} KB",
-                hash_documento=hash_subido
+                hash_documento=hash_subido,
+                detalles_verbose=detalles_verbose
             )
 
     except Exception as e:

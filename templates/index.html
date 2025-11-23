@@ -59,6 +59,11 @@
                                 <input type="file" class="form-control" id="fileVerify" name="file" accept=".pdf"
                                     required>
                             </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="verboseCheck" name="verbose">
+                                <label class="form-check-label" for="verboseCheck">Modo Verbose (Ver detalles
+                                    técnicos)</label>
+                            </div>
                             <button type="submit" class="btn btn-primary w-100">Verificar PDF</button>
                         </form>
                     </div>
@@ -128,7 +133,8 @@
             {% elif status == 'incorrect' %}
             <div class="alert alert-danger" role="alert">
                 <h4 class="alert-heading">❌ Firma INCORRECTA</h4>
-                <p>No se encontró una firma válida para este documento. El documento no está firmado o la firma no corresponde.</p>
+                <p>No se encontró una firma válida para este documento. El documento no está firmado o la firma no
+                    corresponde.</p>
                 <hr>
                 <div class="row">
                     <div class="col-md-6">
@@ -141,6 +147,28 @@
                 </div>
             </div>
             {% endif %}
+
+            <!-- 🛠️ Detalles Verbose -->
+            {% if detalles_verbose %}
+            <div class="card mt-3">
+                <div class="card-header bg-secondary text-white">
+                    <h6 class="mb-0">🛠️ Detalles Técnicos de la Firma (Verbose)</h6>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm table-bordered">
+                        <tbody>
+                            {% for key, value in detalles_verbose.items() %}
+                            <tr>
+                                <th scope="row" class="w-25">{{ key }}</th>
+                                <td class="text-break">{{ value }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
         </div>
         {% endif %}
 
