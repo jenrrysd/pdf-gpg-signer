@@ -6,6 +6,7 @@ from flask import Flask, request, render_template, redirect, url_for, flash, sen
 import gnupg
 import tempfile
 from dotenv import load_dotenv
+from pdf_seal import agregar_sello_a_pdf
 
 # Cargar variables de entorno desde .env
 load_dotenv()
@@ -27,6 +28,9 @@ gpg = gnupg.GPG(gnupghome=os.path.expanduser("~/.gnupg"))
 # 🔑 Contraseña GPG (cámbiala por tu contraseña real)
 # IMPORTANTE: En producción, usa variables de entorno
 GPG_PASSPHRASE = os.getenv('GPG_PASSPHRASE', '')
+
+# 🎨 Configuración del sello visual
+SEAL_ENABLED = os.getenv('SEAL_ENABLED', 'true').lower() == 'true'
 
 
 @app.route('/')
@@ -80,10 +84,32 @@ def firmar_pdf():
         # 🕒 6. Fecha de firma
         fecha_firma = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-        # 🧹 Borrar solo el temporal (el guardado se mantiene)
+        # 🎨 7. Agregar sello visual al PDF (si está habilitado)
+        if SEAL_ENABLED:
+            try:
+                # Obtener información del firmante
+                keys = gpg.list_keys(secret=True)
+                firmante = keys[0]['uids'][0] if keys else "GPG Key"
+                
+                # Agregar sello al PDF
+                pdf_con_sello = agregar_sello_a_pdf(
+                    ruta_pdf_guardado, 
+                    fecha_firma, 
+                    hash_contenido,
+                    firmante
+                )
+                
+                # Sobrescribir el PDF con la versión sellada
+                with open(ruta_pdf_guardado, 'wb') as f:
+                    f.write(pdf_con_sello)
+            except Exception as e:
+                # Si falla el sello, continuar sin él (el PDF y firma ya están guardados)
+                print(f"⚠️ Advertencia: No se pudo agregar el sello visual: {str(e)}")
+
+        # 🧹 8. Borrar solo el temporal (el guardado se mantiene)
         os.unlink(ruta_temporal)
 
-        # 📊 Información del documento
+        # 📊 9. Información del documento
         tamanio_kb = len(contenido_pdf) / 1024
 
         # Guardar nombre del archivo para descarga
