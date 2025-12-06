@@ -57,27 +57,30 @@ def firmar_pdf():
             archivo_subido.save(tmp.name)
             ruta_temporal = tmp.name
 
-        # 🕒 2. Fecha de firma (necesaria para el sello)
+        # 🔍 2. Calcular hash del PDF ORIGINAL (antes de agregar sello)
+        # Este hash representa el contenido real del documento
+        with open(ruta_temporal, 'rb') as f:
+            contenido_original = f.read()
+        hash_contenido = hashlib.sha256(contenido_original).hexdigest()[:16]
+
+        # 🕒 3. Fecha de firma (necesaria para el sello)
         fecha_firma = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-        # 🎨 3. Agregar sello visual ANTES de firmar (si está habilitado)
+        # 🎨 4. Agregar sello visual ANTES de firmar (si está habilitado)
         ruta_pdf_para_firmar = ruta_temporal
+        contenido_pdf_final = contenido_original  # Por defecto, sin sello
+        
         if SEAL_ENABLED:
             try:
                 # Obtener información del firmante
                 keys = gpg.list_keys(secret=True)
                 firmante = keys[0]['uids'][0] if keys else "GPG Key"
                 
-                # Calcular hash preliminar para el sello
-                with open(ruta_temporal, 'rb') as f:
-                    contenido_original = f.read()
-                hash_preliminar = hashlib.sha256(contenido_original).hexdigest()[:16]
-                
-                # Agregar sello al PDF
+                # Agregar sello al PDF usando el hash del PDF original
                 pdf_con_sello = agregar_sello_a_pdf(
                     ruta_temporal, 
                     fecha_firma, 
-                    hash_preliminar,
+                    hash_contenido,  # Usar hash del PDF original
                     firmante
                 )
                 
@@ -85,18 +88,17 @@ def firmar_pdf():
                 with tempfile.NamedTemporaryFile(delete=False, suffix='_sealed.pdf') as tmp_sealed:
                     tmp_sealed.write(pdf_con_sello)
                     ruta_pdf_para_firmar = tmp_sealed.name
+                
+                # Actualizar contenido final
+                contenido_pdf_final = pdf_con_sello
                     
             except Exception as e:
                 # Si falla el sello, continuar con el PDF original
                 print(f"⚠️ Advertencia: No se pudo agregar el sello visual: {str(e)}")
                 ruta_pdf_para_firmar = ruta_temporal
 
-        # 🔍 4. Calcular hash del PDF FINAL (con o sin sello)
-        with open(ruta_pdf_para_firmar, 'rb') as f:
-            contenido_pdf_final = f.read()
-        hash_contenido = hashlib.sha256(contenido_pdf_final).hexdigest()[:16]
-
         # 📁 5. Rutas definitivas
+        # Usar el hash del PDF ORIGINAL para el nombre de la firma
         ruta_pdf_guardado = os.path.join(
             CARPETA_DOCUMENTOS_FIRMADOS, nombre_original)
         ruta_firma = os.path.join(CARPETA_FIRMAS, f"{hash_contenido}.asc")
@@ -105,8 +107,10 @@ def firmar_pdf():
         with open(ruta_pdf_guardado, 'wb') as f:
             f.write(contenido_pdf_final)
 
-        # ✍️ 7. Firmar el PDF final (que ya tiene el sello)
-        with open(ruta_pdf_para_firmar, 'rb') as f:
+        # ✍️ 7. Firmar el PDF FINAL (con sello)
+        # La firma valida el archivo completo que el usuario descarga
+        # El hash del documento original está guardado en el sello visual
+        with open(ruta_pdf_guardado, 'rb') as f:
             resultado = gpg.sign_file(
                 f, detach=True, binary=False, output=ruta_firma, passphrase=GPG_PASSPHRASE)
 
@@ -204,11 +208,48 @@ def verificar_pdf():
         hash_subido = hashlib.sha256(contenido).hexdigest()[:16]
         tamanio_kb = len(contenido) / 1024
 
-        # 📁 Buscar firma
-        ruta_firma = os.path.join(CARPETA_FIRMAS, f"{hash_subido}.asc")
+        # 🔎 Intentar extraer el hash original del sello visual (si existe)
+        # El sello contiene el hash del PDF original antes de agregar el sello
+        hash_original = None
+        try:
+            # Buscar el hash en el contenido del PDF (está en el sello)
+            contenido_str = contenido.decode('latin-1', errors='ignore')
+            
+            import re
+            
+            # El sello tiene el formato: "Hash: XXXXXXXXXXXXXXXX" (16 caracteres hexadecimales)
+            # En el PDF puede estar codificado con secuencias octales como: \174\040Hash\072\040d37999f39542d1da
+            
+            # Buscar el contexto que contiene "Hash"
+            hash_context = re.search(r'Hash.{0,50}', contenido_str, re.IGNORECASE | re.DOTALL)
+            if hash_context:
+                context = hash_context.group(0)
+                # Buscar 16 caracteres hexadecimales consecutivos que NO sean parte de una secuencia más larga
+                # Este patrón evita capturar hashes que son parte de secuencias octales
+                hash_match = re.search(r'(?:^|[^a-f])([a-f0-9]{16})(?![a-f0-9])', context, re.IGNORECASE)
+                if hash_match:
+                    hash_original = hash_match.group(1).lower()
+                    print(f"✅ Hash original extraído del sello: {hash_original}")
+            
+            # Si no se encontró con el método anterior, buscar en el contexto de "FIRMADO"
+            if not hash_original:
+                firmado_context = re.search(r'FIRMADO.{0,200}', contenido_str, re.IGNORECASE | re.DOTALL)
+                if firmado_context:
+                    context = firmado_context.group(0)
+                    hash_match = re.search(r'(?:^|[^a-f])([a-f0-9]{16})(?![a-f0-9])', context, re.IGNORECASE)
+                    if hash_match:
+                        hash_original = hash_match.group(1).lower()
+                        print(f"✅ Hash original extraído del contexto FIRMADO: {hash_original}")
+                    
+        except Exception as e:
+            print(f"⚠️ No se pudo extraer hash del sello: {e}")
+
+        # 📁 Buscar firma usando el hash original (si se encontró) o el hash del PDF subido
+        hash_para_buscar = hash_original if hash_original else hash_subido
+        ruta_firma = os.path.join(CARPETA_FIRMAS, f"{hash_para_buscar}.asc")
 
         if not os.path.exists(ruta_firma):
-            # Buscar por contenido
+            # Buscar por contenido - intentar verificar con todas las firmas disponibles
             for sig in os.listdir(CARPETA_FIRMAS):
                 if sig.endswith('.asc'):
                     candidata = os.path.join(CARPETA_FIRMAS, sig)
@@ -216,6 +257,8 @@ def verificar_pdf():
                         verif = gpg.verify_file(sig_f, ruta_temporal)
                     if verif and verif.valid:
                         ruta_firma = candidata
+                        # Extraer hash del nombre de archivo de la firma
+                        hash_original = sig.replace('.asc', '')
                         break
             else:
                 os.unlink(ruta_temporal)
@@ -225,7 +268,7 @@ def verificar_pdf():
                     status='incorrect',
                     nombre_documento=nombre,
                     tamanio_documento=f"{tamanio_kb:.2f} KB",
-                    hash_documento=hash_subido
+                    hash_documento=hash_para_buscar
                 )
 
         # ✅ Verificar (usando rutas → igual que terminal)
@@ -252,8 +295,11 @@ def verificar_pdf():
             expire_timestamp = getattr(verificacion, 'expire_timestamp', '0')
             key_expiration = 'Nunca'
             
-            if str(expire_timestamp) != '0':
-                 key_expiration = datetime.datetime.fromtimestamp(float(expire_timestamp)).strftime("%Y-%m-%d %H:%M:%S")
+            if expire_timestamp and str(expire_timestamp) != '0':
+                try:
+                    key_expiration = datetime.datetime.fromtimestamp(float(expire_timestamp)).strftime("%Y-%m-%d %H:%M:%S")
+                except (ValueError, TypeError):
+                    key_expiration = 'Nunca'
             else:
                 # Buscar la clave para ver su expiración real
                 try:
@@ -262,9 +308,9 @@ def verificar_pdf():
                         keys = gpg.list_keys(keys=[fp])
                         if keys:
                             key_expires = keys[0].get('expires')
-                            if key_expires:
+                            if key_expires and key_expires != '':
                                 key_expiration = datetime.datetime.fromtimestamp(float(key_expires)).strftime("%Y-%m-%d %H:%M:%S")
-                except:
+                except (ValueError, TypeError):
                     pass
             
             detalles_verbose['Key/Sig Expiration'] = key_expiration
@@ -279,7 +325,7 @@ def verificar_pdf():
                 fecha_firma=fecha.strftime("%d/%m/%Y %H:%M:%S"),
                 nombre_documento=nombre,
                 tamanio_documento=f"{tamanio_kb:.2f} KB",
-                hash_documento=hash_subido,
+                hash_documento=hash_para_buscar,  # Mostrar hash original
                 firmante=verificacion.username if hasattr(
                     verificacion, 'username') else 'GPG Key',
                 detalles_verbose=detalles_verbose
@@ -299,7 +345,7 @@ def verificar_pdf():
                 fecha_firma=fecha_ref,
                 nombre_documento=nombre,
                 tamanio_documento=f"{tamanio_kb:.2f} KB",
-                hash_documento=hash_subido,
+                hash_documento=hash_para_buscar,  # Mostrar hash original
                 detalles_verbose=detalles_verbose
             )
 
