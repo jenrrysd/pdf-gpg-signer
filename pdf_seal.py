@@ -32,58 +32,47 @@ def crear_sello_firma(fecha_firma, hash_documento, firmante="GPG Key"):
     c = canvas.Canvas(temp_path, pagesize=letter)
     width, height = letter
     
-    # Configuración del sello (esquina inferior izquierda) - MÁS PEQUEÑO
-    margin = 0.4 * inch
-    seal_width = 2.5 * inch  # Reducido de 2.8 a 2.5
-    seal_height = 0.95 * inch  # Reducido de 1.1 a 0.95
-    x = margin
-    y = margin
+    # Configuración del sello - BARRA HORIZONTAL EN LA PARTE INFERIOR
+    margin = 0.2 * inch
+    y = margin  # Parte inferior del documento
     
     # Colores
     border_color = HexColor('#2ecc71')  # Verde
-    bg_color = HexColor('#f0fff4')      # Verde muy claro
     text_color = HexColor('#27ae60')    # Verde oscuro
     
-    # Dibujar fondo del sello
-    c.setFillColor(bg_color)
-    c.setStrokeColor(border_color)
-    c.setLineWidth(1.5)  # Reducido de 2 a 1.5
-    c.roundRect(x, y, seal_width, seal_height, 5, fill=1, stroke=1)
+    # Preparar texto en una sola línea
+    c.setFont("Helvetica-Bold", 7)
     
-    # Título del sello - MÁS PEQUEÑO
+    # Hash truncado a 16 caracteres
+    hash_display = hash_documento[:16]
+    
+    # Texto completo en una línea
+    texto_sello = f"✓ FIRMADO DIGITALMENTE | Fecha: {fecha_firma} | Firmante: {firmante} | Hash: {hash_display}"
+    
+    # Calcular el ancho del texto
+    text_width = c.stringWidth(texto_sello, "Helvetica-Bold", 7)
+    padding_horizontal = 20  # Padding interno (10 a cada lado)
+    
+    # Dimensiones del sello basadas en el texto
+    seal_width = text_width + padding_horizontal
+    seal_height = 0.25 * inch  # Altura de una sola línea
+    
+    # Asegurar que el sello no sea más ancho que la página
+    max_width = width - (2 * margin)
+    if seal_width > max_width:
+        seal_width = max_width
+    
+    x = margin
+    
+    # Dibujar borde del sello (sin relleno para no tapar contenido)
+    c.setStrokeColor(border_color)
+    c.setLineWidth(1.5)
+    c.roundRect(x, y, seal_width, seal_height, 3, fill=0, stroke=1)
+    
+    # Dibujar el texto centrado verticalmente en la barra
     c.setFillColor(text_color)
-    c.setFont("Helvetica-Bold", 11)  # Reducido de 14 a 11
-    c.drawString(x + 8, y + seal_height - 18, "✓ FIRMADO DIGITALMENTE")
-    
-    # Línea separadora
-    c.setStrokeColor(border_color)
-    c.setLineWidth(0.8)
-    c.line(x + 8, y + seal_height - 22, x + seal_width - 8, y + seal_height - 22)
-    
-    # Información de la firma - LÍNEAS MÁS JUNTAS
-    c.setFont("Helvetica", 7.5)  # Reducido de 9 a 7.5
-    c.setFillColor(HexColor('#2c3e50'))  # Gris oscuro
-    
-    # Fecha
-    c.drawString(x + 8, y + seal_height - 36, f"Fecha: {fecha_firma}")
-    
-    # Firmante - DIVIDIDO EN DOS LÍNEAS SI ES LARGO
-    if len(firmante) > 35:
-        # Dividir en dos líneas
-        c.drawString(x + 8, y + seal_height - 48, "Firmante:")
-        c.setFont("Helvetica", 7)
-        c.drawString(x + 8, y + seal_height - 58, firmante[:40])
-        if len(firmante) > 40:
-            c.drawString(x + 8, y + seal_height - 67, firmante[40:80])
-        hash_y = y + seal_height - 78
-    else:
-        c.drawString(x + 8, y + seal_height - 48, f"Firmante: {firmante[:35]}")
-        hash_y = y + seal_height - 60
-    
-    # Hash (truncado para que quepa)
-    hash_display = f"{hash_documento[:20]}..." if len(hash_documento) > 20 else hash_documento
-    c.setFont("Helvetica", 6.5)  # Reducido de 8 a 6.5
-    c.drawString(x + 8, hash_y, f"Hash: {hash_display}")
+    text_y = y + (seal_height / 2) - 2  # Centrado vertical
+    c.drawString(x + 10, text_y, texto_sello)
     
     # Guardar el PDF
     c.save()

@@ -57,22 +57,56 @@ def firmar_pdf():
             archivo_subido.save(tmp.name)
             ruta_temporal = tmp.name
 
-        # 🔍 2. Leer contenido y calcular hash
-        with open(ruta_temporal, 'rb') as f:
-            contenido_pdf = f.read()
-        hash_contenido = hashlib.sha256(contenido_pdf).hexdigest()[:16]
+        # 🕒 2. Fecha de firma (necesaria para el sello)
+        fecha_firma = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-        # 📁 3. Rutas definitivas
+        # 🎨 3. Agregar sello visual ANTES de firmar (si está habilitado)
+        ruta_pdf_para_firmar = ruta_temporal
+        if SEAL_ENABLED:
+            try:
+                # Obtener información del firmante
+                keys = gpg.list_keys(secret=True)
+                firmante = keys[0]['uids'][0] if keys else "GPG Key"
+                
+                # Calcular hash preliminar para el sello
+                with open(ruta_temporal, 'rb') as f:
+                    contenido_original = f.read()
+                hash_preliminar = hashlib.sha256(contenido_original).hexdigest()[:16]
+                
+                # Agregar sello al PDF
+                pdf_con_sello = agregar_sello_a_pdf(
+                    ruta_temporal, 
+                    fecha_firma, 
+                    hash_preliminar,
+                    firmante
+                )
+                
+                # Guardar PDF con sello en nuevo temporal
+                with tempfile.NamedTemporaryFile(delete=False, suffix='_sealed.pdf') as tmp_sealed:
+                    tmp_sealed.write(pdf_con_sello)
+                    ruta_pdf_para_firmar = tmp_sealed.name
+                    
+            except Exception as e:
+                # Si falla el sello, continuar con el PDF original
+                print(f"⚠️ Advertencia: No se pudo agregar el sello visual: {str(e)}")
+                ruta_pdf_para_firmar = ruta_temporal
+
+        # 🔍 4. Calcular hash del PDF FINAL (con o sin sello)
+        with open(ruta_pdf_para_firmar, 'rb') as f:
+            contenido_pdf_final = f.read()
+        hash_contenido = hashlib.sha256(contenido_pdf_final).hexdigest()[:16]
+
+        # 📁 5. Rutas definitivas
         ruta_pdf_guardado = os.path.join(
             CARPETA_DOCUMENTOS_FIRMADOS, nombre_original)
         ruta_firma = os.path.join(CARPETA_FIRMAS, f"{hash_contenido}.asc")
 
-        # ✅ 4. Guardar PDF original (sin cambios)
+        # ✅ 6. Guardar PDF final (con sello si está habilitado)
         with open(ruta_pdf_guardado, 'wb') as f:
-            f.write(contenido_pdf)
+            f.write(contenido_pdf_final)
 
-        # ✍️ 5. Firmar desde el temporal
-        with open(ruta_temporal, 'rb') as f:
+        # ✍️ 7. Firmar el PDF final (que ya tiene el sello)
+        with open(ruta_pdf_para_firmar, 'rb') as f:
             resultado = gpg.sign_file(
                 f, detach=True, binary=False, output=ruta_firma, passphrase=GPG_PASSPHRASE)
 
@@ -81,36 +115,13 @@ def firmar_pdf():
             os.unlink(ruta_pdf_guardado)
             raise Exception(f"Firma fallida: {resultado.stderr}")
 
-        # 🕒 6. Fecha de firma
-        fecha_firma = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-        # 🎨 7. Agregar sello visual al PDF (si está habilitado)
-        if SEAL_ENABLED:
-            try:
-                # Obtener información del firmante
-                keys = gpg.list_keys(secret=True)
-                firmante = keys[0]['uids'][0] if keys else "GPG Key"
-                
-                # Agregar sello al PDF
-                pdf_con_sello = agregar_sello_a_pdf(
-                    ruta_pdf_guardado, 
-                    fecha_firma, 
-                    hash_contenido,
-                    firmante
-                )
-                
-                # Sobrescribir el PDF con la versión sellada
-                with open(ruta_pdf_guardado, 'wb') as f:
-                    f.write(pdf_con_sello)
-            except Exception as e:
-                # Si falla el sello, continuar sin él (el PDF y firma ya están guardados)
-                print(f"⚠️ Advertencia: No se pudo agregar el sello visual: {str(e)}")
-
-        # 🧹 8. Borrar solo el temporal (el guardado se mantiene)
+        # 🧹 8. Borrar temporales
         os.unlink(ruta_temporal)
+        if ruta_pdf_para_firmar != ruta_temporal and os.path.exists(ruta_pdf_para_firmar):
+            os.unlink(ruta_pdf_para_firmar)
 
         # 📊 9. Información del documento
-        tamanio_kb = len(contenido_pdf) / 1024
+        tamanio_kb = len(contenido_pdf_final) / 1024
 
         # Guardar nombre del archivo para descarga
         nombre_base, ext = os.path.splitext(nombre_original)
